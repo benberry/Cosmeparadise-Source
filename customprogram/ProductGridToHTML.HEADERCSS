@@ -1,0 +1,257 @@
+<?php
+$directinput = false;
+if(($_POST["txtArea"]) != ""){
+		$tempskulist = array_map('trim',explode(",",$_POST["txtArea"]));
+		//print_r($tempskulist);
+		$directinput = true;
+}
+
+if(isset($_FILES["file"])) { 
+	if (($_FILES["file"]["type"] == "text/csv")
+	|| ($_FILES["file"]["type"] == "application/vnd.ms-excel")
+	|| ($_FILES["file"]["type"] == "application/vnd.msexcel")
+	|| ($_FILES["file"]["type"] == "application/excel")
+	|| ($_FILES["file"]["type"] == "text/comma-separated-values"))
+	{
+	if ($_FILES["file"]["error"] > 0)
+		{   echo "Return Code: " . $_FILES["file"]["error"] . "<br />"; exit;    }
+	}
+  } 
+else
+  {
+?>
+
+<html>
+<body>
+<h2>Product sku To HTML programme</h2>
+<b>Please keep the format: sku</b>
+<form id="usrform" action="ProductGridToHTML.php" method="post" enctype="multipart/form-data">
+<label for="file">Filename:</label>
+<input type="file" name="file" id="file" /> <br />
+Banner1 image-URL<input type="text" name="banner1" size="100"/><br />
+Banner1 destination-URL<input type="text" name="banner1D" size="100"/><br />
+Banner2 image-URL<input type="text" name="banner2" size="100"/><br />
+Banner2 destination-URL<input type="text" name="banner2D" size="100"/><br />
+<br />
+<input type="submit" name="submit" value="Convert To HTML" />
+</form>
+<br />
+Input sku separate with comma "," (If there is any text input, it will skip the uploaded file!)
+<br />
+<textarea form="usrform" name="txtArea" rows="10" cols="70"></textarea>
+</body>
+</html>
+
+<?php	
+  exit;
+  }
+if($directinput == false)
+{	$csvfile = $_FILES["file"]["tmp_name"];
+	
+	if(!file_exists($csvfile)) {
+		echo "File not found.";
+		exit;
+	}
+	
+	$size = filesize($csvfile);
+	if(!$size) {
+		echo "File is empty.\n";
+		exit;
+	}
+}
+?>
+
+<?php
+////////////////////////////start////////////////////////////
+$Enclosure = "\"";
+$Separator = ",";
+$Breakline = "\n";
+////////////////////////get into magento /////////////////////
+set_time_limit(0);
+ignore_user_abort();
+error_reporting(E_ALL^E_NOTICE);
+$_SVR = array();
+
+$path_include = "../app/Mage.php";
+
+// Include configuration file
+if(!file_exists($path_include)) {
+	exit('<HTML><HEAD><TITLE>404 Not Found</TITLE></HEAD><BODY><H1>Not Found</H1>Please ensure that this file is in the root directory, or make sure the path to the directory where the configure.php file is located is defined corectly above in $path_include variable</BODY></HTML>');
+}
+else {
+	require_once $path_include;
+}
+
+// Get default store code
+$default_store = Mage::app()->getStore();
+$default_store_code = $default_store->getCode();
+
+if (isset($_GET['store']) && ($_GET['store'] != "")) {
+	$store = $_GET['store'];
+}
+else {
+	$store = $default_store_code;
+}
+
+Mage::app($store);
+/////////////// call SQL read////////////////
+$connection_read = Mage::getSingleton('core/resource')->getConnection('core_read');		
+/////////////// call SQL write///////////////
+$connection_write = Mage::getSingleton('core/resource')->getConnection('core_write');	
+
+$product_html = '';
+$skulist = array();
+ $product_html .= '
+<head>
+<title>EDM</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<style type="text/css">
+body{background: #fbf9f4;12px/1.55 Arial,Helvetica,sans-serif}
+/*.floating-discount-image{text-align:center;clear:both;height:53px;width:53px;color:#ff6b01;background:url(\'http://www.cosmeparadise.com/media/PINK53x53.gif\') no-repeat;float:right;margin-top:-70px;padding-top:5px;margin-left: 80px;position: absolute;z-index:5}*/
+.floating-discount-image{clear:both;height:53px;width:53px;color:#ff6b01;}
+table{background-color:white;border: 0px;table-layout: fixed;width: 550px;}
+td {width: 170px;}
+.product-image{border:0;}
+.product-name{font-weight:bold;font-size:11px;color:#000;text-align:left;text-transform:uppercase;}
+.product-link{color:#000;font-weight:bold;text-decoration: none;}
+.product-price-div{padding-top: 10px;text-align:left}
+.special-price{font-size:24px;font-weight:bold;color:#FF0000;}
+.product-price{color:#F660AB;font-weight:bold;font-size:24px}
+.product-price-discount{color:#F660AB;font-weight:bold;font-size:24px;text-decoration: line-through;}
+.banner{display:block;border:0;}
+.banner-bottom{display:block;border:0;}
+</style>
+</head>
+<body>';
+
+ 
+  
+///////////////////////Show Image///////////////////
+if(isset($_POST["banner1"]) && $_POST["banner1"] != "")
+	$product_html .=  '<div align="center"><a target="_blank" href="'.$_POST["banner1D"].'"><img class="banner" src="'.$_POST["banner1"].'" alt="top image" /></a></div>';
+
+ $product_html .=  '<table align="center"><tr>';
+ 
+ if (($handle = fopen($csvfile, "r")) !== FALSE || $directinput == true) {	//OPEN CSV or read textarea
+	// FORMAT:  Sku, 
+	$row = 1;
+	if($directinput == true)
+	{	$skulist = $tempskulist;
+		//echo "TEXT";
+	}
+	else
+	{	//echo "CSV";
+		while (($data = fgetcsv($handle)) !== FALSE) {	//go through data	
+			array_push($skulist, trim($data[0]));
+		}
+	}
+  $skucount = count($skulist);
+  $counting = 1;
+ foreach($skulist as $sku)
+{
+	$_product = Mage::getModel('catalog/product')->loadByAttribute('sku',$sku); 
+	if($_product == null)
+		continue;
+		
+	$prod_name = $_product->getName();	
+	$prod_id = $_product->getId();
+	
+	///echo $prod_id."--".$prod_name."--".$MSRP."--".$price."<br />";
+	//if( $counting % 3 == 0)
+	//	$product_html .= '<td width="170px">';
+	//else
+		$product_html .= '<td>';
+	//$product_html .=  '<a target="_blank" style="word-wrap:break-word;" href="'.$_product->getProductUrl().'" ><img width="135px" class="product-image" src="'.Mage::getBaseUrl(Mage_Core_Model_Store::URL_TYPE_MEDIA).'catalog/product'.$_product->getImage().'" alt="Product Detail" /></a>';
+	$product_html .=  '<a target="_blank" style="word-wrap:break-word;" href="'.$_product->getProductUrl().'" ><img width="135px" class="product-image" src="'.Mage::helper('catalog/image')->init($_product, 'small_image')->resize(135).'" alt="Product Detail" /></a>';
+	
+	
+	////////////show save price from MSRP////////////
+	$_specialprice = $_product->getFinalPrice();
+	
+	$_price = $_specialprice >0?$_specialprice:$_product->getPrice();	
+			
+	$product_html .= '<h2 class="product-name"><a target="_blank" class="product-link" href="'.$_product->getProductUrl().'" title="'.$_product->getName().'">'.$_product->getName().'</a></h2>';
+	
+	if($_product->getMsrp()>$_price){
+		$product_html .=  '<div> <span style="font-size:14px;color:#000;">RRP:</span><span style="font-size:14px;color:#000;"><s>'.(Mage::helper('core')->currency($_product->getMsrp(),true,false)).'</s></span></div>';		
+	}
+	
+	/*if($_product->getMsrp()> $_price){
+	//$product_html .= '<div class="floating-discount-image"><span class="save-tag">SAVE</span><br /><span class="save-percent">'.(round(($_product->getMsrp()-$_price)/$_product->getMsrp(),2)*100).'%</span></div>';
+	$product_html .= '<div><span class="product-price">SAVE '.(round(($_product->getMsrp()-$_price)/$_product->getMsrp(),2)*100).'%</span></div>';
+	 }
+	 */
+    if($_specialprice >0 && $_product->getPrice() > $_specialprice)
+	{	$product_html .= '<div class="product-price-div"><p><span class="product-price-discount">A$'.number_format($_product->getPrice(),2,'.','').'</span></p>';
+		$product_html .= '<p><span class="special-price">SAVE '.(round(($_product->getMsrp()-$_price)/$_product->getMsrp(),2)*100).'%</span></p>';
+		$product_html .= '<p><span class="special-price">A$'.number_format($_price,2,'.','').'</span></p></div>';
+	}	
+	else
+	{	$product_html .= '<div class="product-price-div"><p><span class="special-price">SAVE '.(round(($_product->getMsrp()-$_price)/$_product->getMsrp(),2)*100).'%</span></p>';
+		$product_html .= '<p><div class="product-price-div"><span class="product-price">A$'.number_format($_price,2,'.','').'</span></p></div>';
+	}
+	 
+	$product_html .=  '</td>';
+	
+	if( $counting % 3 == 0 && $counting+3 != $skucount)
+		$product_html .=  '</tr><tr><td colspan="3"><hr /></td></tr><tr>';
+	else if($counting % 3 == 0 && $counting+3 == $skucount)
+		$product_html .=  '</tr><tr>';
+	/*else if( $counting % 3 == 0 && $counting < $skucount)
+		$product_html .=  '</ul><ul style="position: relative;padding:15px 0;clear:both;list-style: none;"><li><hr></li></ul><ul style="position:relative;padding:15px 0;border-bottom:1px solid #ecebeb;clear:both;list-style: none;">';*/
+	 
+	 $counting++;
+}
+$product_html .=  '</tr>';	///close table
+$product_html .=  '</table>';
+
+if(isset($_POST["banner2"]) && $_POST["banner2"] != "")
+	$product_html .=  '<div align="center"><a target="_blank" href="'.$_POST["banner2D"].'"><img class="banner-bottom" src="'.$_POST["banner2"].'" alt="bottom image" /></a></div>';
+//$product_html .=  '<p>&nbsp;</p><p>&nbsp;</p><p>&nbsp;</p><p>&nbsp;</p><p>&nbsp;</p><p>&nbsp;</p><p>&nbsp;</p>';
+
+$product_html .=  '</body>';
+
+echo $product_html;
+
+sendEmail($product_html);
+?>
+
+
+<?php
+
+}
+else 
+echo "can't open file <br />";
+fclose($handle);
+
+
+function sendEmail($product_html)
+	 {		
+		//////////////////////////////////////////////////////////////////////		
+		$path_include = "./phpMailer/class.phpmailer.php";
+		require_once $path_include;		
+		$mail = new PHPMailer;		
+		$mail->IsSMTP();                                      // Set mailer to use SMTP
+		$mail->Host = 'cosmepar.nextmp.net';  // Specify main and backup server
+		$mail->SMTPAuth = true;                               // Enable SMTP authentication
+		$mail->Username = 'order2@cosmeparadise.com';                            // SMTP username
+		$mail->Password = 'AppealVicesCrashJoyous77';                           // SMTP password
+		$mail->SMTPSecure = 'tls';                            // Enable encryption, 'ssl' also accepted		 
+		$mail->From = 'order2@cosmeparadise.com';
+		$mail->FromName = 'SBN order '.$subject_status;
+		$mail->AddAddress('union.programmer@gmail.com', 'Berry Lai');  // Add a recipient
+		//$mail->AddAddress('order2@cosmeparadise.com', 'cosme order2'); // Name is optional	
+		$mail->AddBCC('support@cosmeparadise.com', 'Berry Lai');		
+		$mail->WordWrap = 50;                                 // Set word wrap to 50 characters		
+		$mail->IsHTML(true);                                  // Set email format to HTML		
+		$mail->Subject = 'EDM email';
+		$mail->Body    = $product_html;	
+		
+		if(!$mail->Send()) {
+		echo 'Message could not be sent.';
+		echo 'Mailer Error: ' . $mail->ErrorInfo;		
+		}
+		else
+			echo 'Message has been sent <br>';		 
+	 } 
+?>

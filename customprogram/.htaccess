@@ -1,0 +1,8 @@
+DirectoryIndex index.php
+
+AuthType Basic
+<Files "index.php">
+  require valid-user
+</Files>
+AuthName "COSME Permission Required"
+AuthUserFile /home/cosmepar/cosmeparadise.com/html/customprogram/.htpasswd
